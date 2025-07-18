@@ -6,17 +6,11 @@
 //
 
 
-
 import SwiftUI
 import PhotosUI
 
 struct BuildArtPieceView: View {
-    // Enum for matting style
-    enum MattingStyle: String, CaseIterable, Identifiable {
-        case centered = "Centered"
-        case bottomWeighted = "Bottom-Weighted"
-        var id: Self { self }
-    }
+    // The MattingStyle enum has been moved to its own file.
 
     // Environment property to dismiss the view
     @Environment(\.dismiss) private var dismiss

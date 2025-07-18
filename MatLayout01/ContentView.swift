@@ -23,100 +23,125 @@ struct ContentView: View {
         }
     }
 
-    // Use @State to manage artworks locally since GalleryViewModel was removed.
-    @State private var artworks: [ArtworkConfiguration] = []
+    // Use AppStorage to show the overlay only on the first launch.
+    @AppStorage("hasSeenInstructions") private var hasSeenInstructions: Bool = false
+
+    // Use the new ViewModel to manage data and iCloud sync.
+    @StateObject private var viewModel = GalleryViewModel()
     @State private var activeSheet: ActiveSheet?
     @State private var showARViewForArtwork: ArtworkConfiguration?
+    // State to manually re-show the instructions screen.
+    @State private var showInstructionsSheet = false
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if artworks.isEmpty {
-                    Text("Your gallery is empty.")
-                        .foregroundColor(.secondary)
-                } else {
-                    List {
-                        ForEach(artworks) { artwork in
-                            VStack(alignment: .leading, spacing: 0) {
-                                artwork.preview
-                                    .frame(height: 250)
-                                    .cornerRadius(8)
-                                    .padding(.bottom, 8)
-                                
-                                Text(artwork.description)
-                                    .font(.headline)
-                                    .padding(.bottom, 8)
-                                
-                                HStack {
-                                    Spacer()
-                                    Button(action: { activeSheet = .editArtwork(artwork) }) {
-                                        Label("Edit", systemImage: "pencil")
-                                    }
+        ZStack {
+            NavigationStack {
+                Group {
+                    if viewModel.artworks.isEmpty {
+                        Text("Your gallery is empty.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        List {
+                            ForEach(viewModel.artworks) { artwork in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    artwork.preview
+                                        .frame(height: 250)
+                                        .cornerRadius(8)
+                                        .padding(.bottom, 8)
                                     
-                                    // This may need to be adjusted if ProductionInstructionsView
-                                    // also had dependencies on the old view model.
-                                    NavigationLink {
-                                        ProductionInstructionsView(artwork: artwork)
-                                    } label: {
-                                        Label("Instructions", systemImage: "list.bullet.rectangle")
-                                    }
+                                    Text(artwork.description)
+                                        .font(.headline)
+                                        .padding(.bottom, 8)
                                     
-                                    Button(action: { showARViewForArtwork = artwork }) {
-                                        Label("AR View", systemImage: "arkit")
+                                    HStack {
+                                        Spacer()
+                                        Button(action: { activeSheet = .editArtwork(artwork) }) {
+                                            Label("Edit", systemImage: "pencil")
+                                        }
+                                        
+                                        NavigationLink {
+                                            ProductionInstructionsView(artwork: artwork)
+                                        } label: {
+                                            Label("Instructions", systemImage: "list.bullet.rectangle")
+                                        }
+                                        
+                                        Button(action: { showARViewForArtwork = artwork }) {
+                                            Label("AR View", systemImage: "arkit")
+                                        }
+                                        Spacer()
                                     }
-                                    Spacer()
+                                    .buttonStyle(.bordered)
+                                    .labelStyle(.iconOnly)
+                                    .padding(.bottom, 8)
                                 }
-                                .buttonStyle(.bordered)
-                                .labelStyle(.iconOnly)
-                                .padding(.bottom, 8)
+                                .listRowSeparator(.hidden)
                             }
-                            .listRowSeparator(.hidden)
+                            .onDelete(perform: viewModel.deleteArtwork)
                         }
-                        .onDelete(perform: deleteArtwork)
-                    }
-                    .listStyle(.plain)
-                }
-            }
-            .navigationTitle("My Gallery")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        activeSheet = .newArtwork
-                    }) {
-                        Image(systemName: "plus")
+                        .listStyle(.plain)
                     }
                 }
-            }
-            .sheet(item: $activeSheet) { sheet in
-                switch sheet {
-                case .newArtwork:
-                    BuildArtPieceView(artworkToEdit: nil) { newArtwork in
-                        // Add the new artwork to the local state array.
-                        artworks.append(newArtwork)
+                .navigationTitle("My Gallery")
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigationBarLeading) {
+                        EditButton()
+                        // Button to re-show the instructions.
+                        Button(action: { showInstructionsSheet = true }) {
+                            Image(systemName: "questionmark.circle")
+                        }
                     }
-                case .editArtwork(let artwork):
-                    BuildArtPieceView(artworkToEdit: artwork) { updatedArtwork in
-                        // Find and update the artwork in the local state array.
-                        if let index = artworks.firstIndex(where: { $0.id == updatedArtwork.id }) {
-                            artworks[index] = updatedArtwork
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            activeSheet = .newArtwork
+                        }) {
+                            Image(systemName: "plus")
                         }
                     }
                 }
+                .sheet(item: $activeSheet) { sheet in
+                    switch sheet {
+                    case .newArtwork:
+                        BuildArtPieceView(artworkToEdit: nil) { newArtwork in
+                            // Add artwork via the view model.
+                            viewModel.addArtwork(newArtwork)
+                        }
+                    case .editArtwork:
+                        // The sheet needs to be passed the specific artwork to edit.
+                        if case .editArtwork(let artwork) = sheet {
+                            BuildArtPieceView(artworkToEdit: artwork) { updatedArtwork in
+                                // Update artwork via the view model.
+                                viewModel.updateArtwork(updatedArtwork)
+                            }
+                        }
+                    }
+                }
+                // Present the instructions as a sheet when the help button is tapped.
+                .sheet(isPresented: $showInstructionsSheet) {
+                    InstructionsOverlayView(isPresented: $showInstructionsSheet)
+                }
+                .fullScreenCover(item: $showARViewForArtwork) { artwork in
+                    ARArtView(artwork: artwork)
+                }
             }
-            .fullScreenCover(item: $showARViewForArtwork) { artwork in
-                ARArtView(artwork: artwork)
+            
+            // Show the overlay if the user hasn't seen it yet.
+            if !hasSeenInstructions {
+                InstructionsOverlayView(isPresented: $hasSeenInstructions.inverted)
             }
         }
     }
-    
-    // Function to handle deleting artworks from the local state.
-    private func deleteArtwork(at offsets: IndexSet) {
-        artworks.remove(atOffsets: offsets)
+}
+
+// Helper to create a binding from a boolean.
+extension Binding where Value == Bool {
+    var inverted: Binding<Bool> {
+        Binding<Bool>(
+            get: { !self.wrappedValue },
+            set: { self.wrappedValue = !$0 }
+        )
     }
 }
+
 
 #Preview {
     ContentView()

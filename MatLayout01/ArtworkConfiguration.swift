@@ -27,8 +27,9 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
 
     let cropRatio: CropRatio
     let framingMode: FramingMode
-    let mattingStyle: BuildArtPieceView.MattingStyle
+    let mattingStyle: MattingStyle
     let selectedStandardFrameId: UUID?
+    let creationDate: Date
 
     // Custom initializer
     init(
@@ -50,8 +51,9 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         matRightInches: Double,
         cropRatio: CropRatio,
         framingMode: FramingMode,
-        mattingStyle: BuildArtPieceView.MattingStyle,
-        selectedStandardFrameId: UUID?
+        mattingStyle: MattingStyle,
+        selectedStandardFrameId: UUID?,
+        creationDate: Date = Date()
     ) {
         self.id = id
         self.artworkName = artworkName
@@ -73,6 +75,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         self.framingMode = framingMode
         self.mattingStyle = mattingStyle
         self.selectedStandardFrameId = selectedStandardFrameId
+        self.creationDate = creationDate
     }
 
     // MARK: - CustomStringConvertible
