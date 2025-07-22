@@ -114,6 +114,7 @@ extension ArtworkConfiguration: Codable {
         case printWidthInches, printHeightInches, matTopInches, matBottomInches
         case matLeftInches, matRightInches, cropRatio, framingMode
         case mattingStyle, selectedStandardFrameId
+        case isAREnabledForFree // Add the new key
     }
 
     public init(from decoder: Decoder) throws {
@@ -140,8 +141,10 @@ extension ArtworkConfiguration: Codable {
         let framingMode = try container.decode(FramingMode.self, forKey: .framingMode)
         let mattingStyle = try container.decode(MattingStyle.self, forKey: .mattingStyle)
         let selectedStandardFrameId = try container.decodeIfPresent(UUID.self, forKey: .selectedStandardFrameId)
+        // Decode the new property, providing a default value for backward compatibility.
+        let isAREnabledForFree = try container.decodeIfPresent(Bool.self, forKey: .isAREnabledForFree) ?? false
 
-        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId)
+        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId, isAREnabledForFree: isAREnabledForFree)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -167,5 +170,6 @@ extension ArtworkConfiguration: Codable {
         try container.encode(framingMode, forKey: .framingMode)
         try container.encode(mattingStyle, forKey: .mattingStyle)
         try container.encodeIfPresent(selectedStandardFrameId, forKey: .selectedStandardFrameId)
+        try container.encode(isAREnabledForFree, forKey: .isAREnabledForFree)
     }
 }

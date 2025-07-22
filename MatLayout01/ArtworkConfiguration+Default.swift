@@ -21,23 +21,24 @@ extension ArtworkConfiguration {
         return ArtworkConfiguration(
             artworkName: "Welcome Artwork",
             imageData: imageData,
-            totalWidthInches: 43,  
-            totalHeightInches: 49,
+            totalWidthInches: 33,
+            totalHeightInches: 39,
             matColor: .white,
             frameColor: .black,
-            frameWidthInches: 2.5,
+            frameWidthInches: 1.5,
             imageScale: 1.0,
             imageOffset: .zero,
             printWidthInches: 22,
             printHeightInches: 28,
-            matTopInches: 8.0,
-            matBottomInches: 8.0,
-            matLeftInches: 8.0,
-            matRightInches: 8.0,
+            matTopInches: 4.0,
+            matBottomInches: 4.0,
+            matLeftInches: 4.0,
+            matRightInches: 4.0,
             cropRatio: .r22x28, // Ratio should match print dimensions
             framingMode: .custom, // Corrected: This enables the custom frame
             mattingStyle: .centered,
-            selectedStandardFrameId: nil
+            selectedStandardFrameId: nil,
+            isAREnabledForFree: true
         )
     }
 }

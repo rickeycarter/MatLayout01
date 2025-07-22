@@ -12,6 +12,7 @@ import SwiftUI
 class GalleryViewModel: ObservableObject {
     @Published var artworks: [ArtworkConfiguration] = []
     private let filename = "artworks.json"
+    @AppStorage("firstUserArtworkID") private var firstUserArtworkID: String?
 
     private var iCloudDocumentsURL: URL? {
         guard let url = FileManager.default.url(forUbiquityContainerIdentifier: nil)?.appendingPathComponent("Documents") else {
@@ -40,6 +41,10 @@ class GalleryViewModel: ObservableObject {
     }
 
     func addArtwork(_ artwork: ArtworkConfiguration) {
+        // If no artwork has been saved yet, this is the first one.
+        if firstUserArtworkID == nil {
+            firstUserArtworkID = artwork.id.uuidString
+        }
         artworks.append(artwork)
         // Re-sort after adding a new item
         artworks.sort(by: { $0.creationDate > $1.creationDate })

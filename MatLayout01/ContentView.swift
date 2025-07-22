@@ -28,10 +28,15 @@ struct ContentView: View {
 
     // Use the new ViewModel to manage data and iCloud sync.
     @StateObject private var viewModel = GalleryViewModel()
+    // Add properties for StoreManager
+    @StateObject private var storeManager = StoreManager()
+    
     @State private var activeSheet: ActiveSheet?
     @State private var showARViewForArtwork: ArtworkConfiguration?
     // State to manually re-show the instructions screen.
     @State private var showInstructionsSheet = false
+    // State for the upgrade sheet
+    @State private var showUpgradeSheet = false
 
     var body: some View {
         ZStack {
@@ -65,9 +70,17 @@ struct ContentView: View {
                                             Label("Instructions", systemImage: "list.bullet.rectangle")
                                         }
                                         
-                                        Button(action: { showARViewForArtwork = artwork }) {
-                                            Label("AR View", systemImage: "arkit")
+                                        // Conditionally show AR button or Upgrade button
+                                        if artwork.isAREnabledForFree || storeManager.isProUnlocked {
+                                            Button(action: { showARViewForArtwork = artwork }) {
+                                                Label("AR View", systemImage: "arkit")
+                                            }
+                                        } else {
+                                            Button(action: { showUpgradeSheet = true }) {
+                                                Label("Upgrade for AR", systemImage: "sparkles")
+                                            }
                                         }
+                          
                                         Spacer()
                                     }
                                     .buttonStyle(.bordered)
@@ -85,15 +98,12 @@ struct ContentView: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarLeading) {
                         EditButton()
-                        // Button to re-show the instructions.
                         Button(action: { showInstructionsSheet = true }) {
                             Image(systemName: "questionmark.circle")
                         }
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: {
-                            activeSheet = .newArtwork
-                        }) {
+                        Button(action: { activeSheet = .newArtwork }) {
                             Image(systemName: "plus")
                         }
                     }
@@ -102,33 +112,30 @@ struct ContentView: View {
                     switch sheet {
                     case .newArtwork:
                         BuildArtPieceView(artworkToEdit: nil) { newArtwork in
-                            // Add artwork via the view model.
                             viewModel.addArtwork(newArtwork)
                         }
-                    case .editArtwork:
-                        // The sheet needs to be passed the specific artwork to edit.
-                        if case .editArtwork(let artwork) = sheet {
-                            BuildArtPieceView(artworkToEdit: artwork) { updatedArtwork in
-                                // Update artwork via the view model.
-                                viewModel.updateArtwork(updatedArtwork)
-                            }
+                    case .editArtwork(let artwork):
+                        BuildArtPieceView(artworkToEdit: artwork) { updatedArtwork in
+                            viewModel.updateArtwork(updatedArtwork)
                         }
                     }
                 }
-                // Present the instructions as a sheet when the help button is tapped.
                 .sheet(isPresented: $showInstructionsSheet) {
                     InstructionsOverlayView(isPresented: $showInstructionsSheet)
+                }
+                .sheet(isPresented: $showUpgradeSheet) {
+                    UpgradeView(isPresented: $showUpgradeSheet)
                 }
                 .fullScreenCover(item: $showARViewForArtwork) { artwork in
                     ARArtView(artwork: artwork)
                 }
             }
             
-            // Show the overlay if the user hasn't seen it yet.
             if !hasSeenInstructions {
                 InstructionsOverlayView(isPresented: $hasSeenInstructions.inverted)
             }
         }
+        .environmentObject(storeManager)
     }
 }
 
@@ -141,7 +148,6 @@ extension Binding where Value == Bool {
         )
     }
 }
-
 
 #Preview {
     ContentView()

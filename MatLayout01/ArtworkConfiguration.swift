@@ -29,6 +29,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
     let framingMode: FramingMode
     let mattingStyle: MattingStyle
     let selectedStandardFrameId: UUID?
+    let isAREnabledForFree: Bool
     let creationDate: Date
 
     // Custom initializer
@@ -53,6 +54,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         framingMode: FramingMode,
         mattingStyle: MattingStyle,
         selectedStandardFrameId: UUID?,
+        isAREnabledForFree: Bool = false,
         creationDate: Date = Date()
     ) {
         self.id = id
@@ -75,6 +77,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         self.framingMode = framingMode
         self.mattingStyle = mattingStyle
         self.selectedStandardFrameId = selectedStandardFrameId
+        self.isAREnabledForFree = isAREnabledForFree
         self.creationDate = creationDate
     }
 
