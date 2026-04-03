@@ -11,6 +11,7 @@ import SwiftUI
 @MainActor
 class GalleryViewModel: ObservableObject {
     @Published var artworks: [ArtworkConfiguration] = []
+    @Published var initialArtworkForGallery: ArtworkConfiguration?
     private let filename = "artworks.json"
     @AppStorage("firstUserArtworkID") private var firstUserArtworkID: String?
 

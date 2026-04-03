@@ -10,6 +10,7 @@
 
 import Foundation
 import StoreKit
+import UIKit
 
 // Use a specific product identifier for your IAP.
 // You must create this in App Store Connect.
@@ -47,7 +48,12 @@ class StoreManager: ObservableObject {
                 return
             }
             
-            let result = try await proProduct.purchase()
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+                print("Error: No active window scene for purchase UI.")
+                return
+            }
+            let result = try await proProduct.purchase(confirmIn: windowScene)
             
             // Handle the different purchase outcomes
             switch result {

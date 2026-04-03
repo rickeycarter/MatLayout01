@@ -29,6 +29,9 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
     let framingMode: FramingMode
     let mattingStyle: MattingStyle
     let selectedStandardFrameId: UUID?
+    let customFrameWidthInches: Double?
+    let customFrameHeightInches: Double?
+    let hangerDropInches: Double?
     let isAREnabledForFree: Bool
     let creationDate: Date
 
@@ -54,6 +57,9 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         framingMode: FramingMode,
         mattingStyle: MattingStyle,
         selectedStandardFrameId: UUID?,
+        customFrameWidthInches: Double? = nil,
+        customFrameHeightInches: Double? = nil,
+        hangerDropInches: Double? = nil,
         isAREnabledForFree: Bool = false,
         creationDate: Date = Date()
     ) {
@@ -77,6 +83,9 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         self.framingMode = framingMode
         self.mattingStyle = mattingStyle
         self.selectedStandardFrameId = selectedStandardFrameId
+        self.customFrameWidthInches = customFrameWidthInches
+        self.customFrameHeightInches = customFrameHeightInches
+        self.hangerDropInches = hangerDropInches
         self.isAREnabledForFree = isAREnabledForFree
         self.creationDate = creationDate
     }

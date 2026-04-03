@@ -12,6 +12,7 @@ import SwiftUI
 enum FramingMode: String, CaseIterable, Identifiable, Codable {
     case custom = "Custom Mat"
     case standard = "Standard Frame"
+    case customFrame = "Custom Frame"
     var id: Self { self }
 }
 
@@ -114,7 +115,9 @@ extension ArtworkConfiguration: Codable {
         case printWidthInches, printHeightInches, matTopInches, matBottomInches
         case matLeftInches, matRightInches, cropRatio, framingMode
         case mattingStyle, selectedStandardFrameId
-        case isAREnabledForFree // Add the new key
+        case customFrameWidthInches, customFrameHeightInches
+        case hangerDropInches
+        case isAREnabledForFree
     }
 
     public init(from decoder: Decoder) throws {
@@ -141,10 +144,12 @@ extension ArtworkConfiguration: Codable {
         let framingMode = try container.decode(FramingMode.self, forKey: .framingMode)
         let mattingStyle = try container.decode(MattingStyle.self, forKey: .mattingStyle)
         let selectedStandardFrameId = try container.decodeIfPresent(UUID.self, forKey: .selectedStandardFrameId)
-        // Decode the new property, providing a default value for backward compatibility.
+        let customFrameWidthInches = try container.decodeIfPresent(Double.self, forKey: .customFrameWidthInches)
+        let customFrameHeightInches = try container.decodeIfPresent(Double.self, forKey: .customFrameHeightInches)
+        let hangerDropInches = try container.decodeIfPresent(Double.self, forKey: .hangerDropInches)
         let isAREnabledForFree = try container.decodeIfPresent(Bool.self, forKey: .isAREnabledForFree) ?? false
 
-        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId, isAREnabledForFree: isAREnabledForFree)
+        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId, customFrameWidthInches: customFrameWidthInches, customFrameHeightInches: customFrameHeightInches, hangerDropInches: hangerDropInches, isAREnabledForFree: isAREnabledForFree)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -170,6 +175,9 @@ extension ArtworkConfiguration: Codable {
         try container.encode(framingMode, forKey: .framingMode)
         try container.encode(mattingStyle, forKey: .mattingStyle)
         try container.encodeIfPresent(selectedStandardFrameId, forKey: .selectedStandardFrameId)
+        try container.encodeIfPresent(customFrameWidthInches, forKey: .customFrameWidthInches)
+        try container.encodeIfPresent(customFrameHeightInches, forKey: .customFrameHeightInches)
+        try container.encodeIfPresent(hangerDropInches, forKey: .hangerDropInches)
         try container.encode(isAREnabledForFree, forKey: .isAREnabledForFree)
     }
 }

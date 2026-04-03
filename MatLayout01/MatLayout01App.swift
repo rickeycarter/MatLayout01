@@ -10,11 +10,20 @@ import SwiftData
 
 @main
 struct MatLayout01App: App {
-  
+    @StateObject private var galleryViewModel = GalleryViewModel()
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main") {
             ContentView()
+                .environmentObject(galleryViewModel)
         }
+
+        #if os(visionOS)
+        ImmersiveSpace(id: "artGallery") {
+            VisionGalleryView()
+                .environmentObject(galleryViewModel)
+        }
+        .immersionStyle(selection: .constant(.mixed), in: .mixed)
+        #endif
     }
 }

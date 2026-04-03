@@ -9,230 +9,161 @@
 import SwiftUI
 import PhotosUI
 
+/// Determines whether the builder starts from a photo or from frame dimensions
+enum BuilderMode {
+    case photoFirst
+    case frameFirst
+}
+
 struct BuildArtPieceView: View {
-    // The MattingStyle enum has been moved to its own file.
 
-    // Environment property to dismiss the view
+    // MARK: - Environment
+
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    // Artwork to edit (optional)
+    // MARK: - Parameters
+
     var artworkToEdit: ArtworkConfiguration?
-    // Completion handler to be called when "Done" is tapped
     var onComplete: (ArtworkConfiguration) -> Void
+    var builderMode: BuilderMode = .photoFirst
+    var designRecommendation: DesignRecommendation? = nil
+    var initialFrameWidth: Double? = nil
+    var initialFrameHeight: Double? = nil
 
-    // State for the selected image item and image data
+    // MARK: - State
+
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedImageData: Data?
-
-    // State for artwork name
     @State private var artworkName: String = ""
-
-    // State for the selected crop ratio
     @State private var selectedCropRatio: CropRatio = .r4x5
 
-    // State for zoom and pan
+    // Zoom and pan
     @State private var initialScale: CGFloat = 1.0
     @State private var currentScale: CGFloat = 1.0
     @State private var finalScale: CGFloat = 1.0
     @State private var currentOffset: CGSize = .zero
     @State private var finalOffset: CGSize = .zero
 
-    // State for frame
+    // Frame
     @State private var frameWidth: Double = 1.0
     @State private var frameColor: Color = .black
 
-    // State for mat color
+    // Mat
     @State private var matColor: Color = Color(red: 250/255, green: 249/255, blue: 246/255) // #FAF9F6
-
-    // State for mat dimensions in inches
     @State private var matTop: Double = 2.0
     @State private var matBottom: Double = 2.0
     @State private var matLeft: Double = 2.0
     @State private var matRight: Double = 2.0
 
-    // State for framing mode and standard frame selection
+    // Framing mode
     @State private var framingMode: FramingMode = .custom
     @State private var selectedStandardFrameId: UUID?
     @State private var mattingStyle: MattingStyle = .centered
+    @State private var frameSettingsExpanded: Bool = false
 
-    // Computed properties for total dimensions
+    // Custom frame dimensions
+    @State private var customFrameWidth: Double = 16.0
+    @State private var customFrameHeight: Double = 20.0
+
+    // MARK: - Computed Properties
+
     var totalWidth: Double {
         if framingMode == .standard,
            let frameId = selectedStandardFrameId,
            let frame = currentAvailableFrames.first(where: { $0.id == frameId }) {
             return frame.width + (frameWidth * 2)
         }
+        if framingMode == .customFrame {
+            return customFrameWidth + (frameWidth * 2)
+        }
         return selectedCropRatio.dimensions.width + matLeft + matRight + (frameWidth * 2)
     }
+
     var totalHeight: Double {
         if framingMode == .standard,
            let frameId = selectedStandardFrameId,
            let frame = currentAvailableFrames.first(where: { $0.id == frameId }) {
             return frame.height + (frameWidth * 2)
         }
+        if framingMode == .customFrame {
+            return customFrameHeight + (frameWidth * 2)
+        }
         return selectedCropRatio.dimensions.height + matTop + matBottom + (frameWidth * 2)
     }
 
-    // Computed property for the final combined image transform
     var finalImageTransform: (scale: CGFloat, offset: CGSize) {
         (scale: initialScale * finalScale, offset: finalOffset)
     }
 
-    // A struct to use as an ID for the .task modifier
     struct PreviewConfig: Equatable {
         let totalWidth: Double
         let totalHeight: Double
         let imageIdentifier: String?
     }
 
-    // Computed property for the list of currently available standard frames
     private var currentAvailableFrames: [StandardFrame] {
         availableStandardFrames(for: selectedCropRatio)
     }
 
-    // Computed property to determine if the matting style picker should be shown
     private var showMattingStylePicker: Bool {
-        guard framingMode == .standard,
-              let frameId = selectedStandardFrameId,
-              let standardFrame = currentAvailableFrames.first(where: { $0.id == frameId })
-        else { return false }
-
         let printSize = selectedCropRatio.dimensions
-        guard standardFrame.width >= printSize.width, standardFrame.height >= printSize.height else { return false }
+        var frameInnerWidth: Double
+        var frameInnerHeight: Double
 
-        let horizontalMat = (standardFrame.width - printSize.width) / 2.0
-        let verticalMat = (standardFrame.height - printSize.height) / 2.0
+        if framingMode == .standard,
+           let frameId = selectedStandardFrameId,
+           let standardFrame = currentAvailableFrames.first(where: { $0.id == frameId }) {
+            frameInnerWidth = standardFrame.width
+            frameInnerHeight = standardFrame.height
+        } else if framingMode == .customFrame {
+            frameInnerWidth = customFrameWidth
+            frameInnerHeight = customFrameHeight
+        } else {
+            return false
+        }
+
+        guard frameInnerWidth >= printSize.width, frameInnerHeight >= printSize.height else { return false }
+
+        let horizontalMat = (frameInnerWidth - printSize.width) / 2.0
+        let verticalMat = (frameInnerHeight - printSize.height) / 2.0
 
         return verticalMat > horizontalMat
     }
 
+    /// Print sizes filtered to those that fit the current frame (frame-first mode only)
+    private var compatiblePrintSizes: [CropRatio] {
+        guard builderMode == .frameFirst else { return CropRatio.allCases }
+
+        let innerW: Double
+        let innerH: Double
+        if framingMode == .customFrame {
+            innerW = customFrameWidth
+            innerH = customFrameHeight
+        } else if framingMode == .standard,
+                  let frameId = selectedStandardFrameId,
+                  let frame = currentAvailableFrames.first(where: { $0.id == frameId }) {
+            innerW = frame.width
+            innerH = frame.height
+        } else {
+            return CropRatio.allCases
+        }
+
+        return CropRatio.allCases.filter { ratio in
+            let dims = ratio.dimensions
+            return dims.width <= innerW && dims.height <= innerH
+        }
+    }
+
+    // MARK: - Body
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    ZStack {
-                        Color(uiColor: .systemGray5) // The "wall" color
-
-                        if let selectedImageData, let uiImage = UIImage(data: selectedImageData) {
-                            GeometryReader { geometry in
-                                let artworkAspectRatio = totalHeight > 0 ? totalWidth / totalHeight : 1.0
-                                let containerSize = geometry.size
-                                let containerAspectRatio = containerSize.width / containerSize.height
-
-                                let previewFrameSize = (containerAspectRatio > artworkAspectRatio) ?
-                                    CGSize(width: containerSize.height * artworkAspectRatio, height: containerSize.height) :
-                                    CGSize(width: containerSize.width, height: containerSize.width / artworkAspectRatio)
-
-                                let pointsPerInch = totalWidth > 0 ? previewFrameSize.width / totalWidth : 0
-                                let previewMatWidth = (selectedCropRatio.dimensions.width + matLeft + matRight) * pointsPerInch
-                                let previewMatHeight = (selectedCropRatio.dimensions.height + matTop + matBottom) * pointsPerInch
-                                let previewImageWidth = selectedCropRatio.dimensions.width * pointsPerInch
-                                let previewImageHeight = selectedCropRatio.dimensions.height * pointsPerInch
-
-                                let xOffset = (matLeft - matRight) / 2.0 * pointsPerInch
-                                let yOffset = (matTop - matBottom) / 2.0 * pointsPerInch
-
-                                ZStack {
-                                    frameColor
-                                    matColor.frame(width: previewMatWidth, height: previewMatHeight)
-                                    ZoomableImageView(
-                                        uiImage: uiImage,
-                                        initialScale: initialScale,
-                                        geometrySize: geometry.size,
-                                        currentScale: $currentScale,
-                                        finalScale: $finalScale,
-                                        currentOffset: $currentOffset,
-                                        finalOffset: $finalOffset
-                                    )
-                                    .frame(width: previewImageWidth, height: previewImageHeight)
-                                    .clipped()
-                                    .offset(x: xOffset, y: yOffset)
-                                }
-                                .frame(width: previewFrameSize.width, height: previewFrameSize.height)
-                                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-                                .task(id: PreviewConfig(totalWidth: totalWidth, totalHeight: totalHeight, imageIdentifier: selectedPhoto?.itemIdentifier)) {
-                                    let imageCropBoxSize = CGSize(width: previewImageWidth, height: previewImageHeight)
-                                    updateInitialScale(imageSize: uiImage.size, imageGestureAreaSize: geometry.size, imageCropBoxSize: imageCropBoxSize)
-                                }
-                            }
-                        } else {
-                            Text("Select an Image to Begin").foregroundColor(.gray)
-                        }
-                    }
-                    .frame(height: 300)
-                }
-                .listRowInsets(EdgeInsets())
-
-                Section {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images, photoLibrary: .shared()) {
-                        Label(selectedImageData == nil ? "Select Image" : "Change Image", systemImage: "photo.on.rectangle.angled")
-                    }
-                    .onChange(of: selectedPhoto) { oldValue, newValue in
-                       Task {
-                           if let data = try? await newValue?.loadTransferable(type: Data.self) {
-                               selectedImageData = data
-                           }
-                       }
-                   }
-                }
-
-                Section(header: Text("Artwork Name")) {
-                    TextField("e.g., \"My Masterpiece\"", text: $artworkName)
-                }
-
-                Section(header: Text("Print Size")) {
-                    Picker("Select Ratio", selection: $selectedCropRatio) {
-                        ForEach(CropRatio.allCases) { ratio in
-                            Text(ratio.rawValue).tag(ratio)
-                        }
-                    }
-                }
-
-                DisclosureGroup("Frame & Mat Settings") {
-                    Picker("Framing Style", selection: $framingMode) {
-                        ForEach(FramingMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.bottom, 5)
-
-                    Section(header: Text("Frame (Inches)")) {
-                        ColorPicker("Frame Color", selection: $frameColor)
-                        Stepper("Width: \(frameWidth, specifier: "%.2f") in", value: $frameWidth, in: 0.5...5, step: 0.25)
-                    }
-
-                    if framingMode == .custom {
-                        Section(header: Text("Mat Dimensions (Inches)")) {
-                            ColorPicker("Mat Color", selection: $matColor)
-                            Stepper("Top: \(matTop, specifier: "%.2f") in", value: $matTop, in: 0...20, step: 0.25)
-                            Stepper("Bottom: \(matBottom, specifier: "%.2f") in", value: $matBottom, in: 0...20, step: 0.25)
-                            Stepper("Left: \(matLeft, specifier: "%.2f") in", value: $matLeft, in: 0...20, step: 0.25)
-                            Stepper("Right: \(matRight, specifier: "%.2f") in", value: $matRight, in: 0...20, step: 0.25)
-                        }
-                    } else {
-                        Section(header: Text("Standard Frame")) {
-                            ColorPicker("Mat Color", selection: $matColor)
-                            Picker("Size", selection: $selectedStandardFrameId) {
-                                ForEach(currentAvailableFrames) { frame in
-                                    Text(frame.description).tag(frame.id as UUID?)
-                                }
-                            }
-                            if showMattingStylePicker {
-                                Picker("Matting Style", selection: $mattingStyle) {
-                                    ForEach(MattingStyle.allCases) { style in
-                                        Text(style.rawValue).tag(style)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                            }
-                        }
-                    }
-                }
-
-                Section(header: Text("Output Dimensions (for AR)")) {
-                    Text("Total Width: \(totalWidth, specifier: "%.2f") in")
-                    Text("Total Height: \(totalHeight, specifier: "%.2f") in")
+            Group {
+                if horizontalSizeClass == .regular {
+                    iPadLayout
+                } else {
+                    iPhoneLayout
                 }
             }
             .navigationTitle(artworkToEdit == nil ? "New Artwork" : "Edit Artwork")
@@ -264,7 +195,9 @@ struct BuildArtPieceView: View {
                             cropRatio: selectedCropRatio,
                             framingMode: framingMode,
                             mattingStyle: mattingStyle,
-                            selectedStandardFrameId: selectedStandardFrameId
+                            selectedStandardFrameId: selectedStandardFrameId,
+                            customFrameWidthInches: framingMode == .customFrame ? customFrameWidth : nil,
+                            customFrameHeightInches: framingMode == .customFrame ? customFrameHeight : nil
                         )
                         onComplete(config)
                         dismiss()
@@ -277,11 +210,23 @@ struct BuildArtPieceView: View {
                 if newMode == .standard {
                     selectedStandardFrameId = availableStandardFrames(for: selectedCropRatio).first?.id
                 }
+                // In frame-first mode the frame is fixed — never enlarge it to fit the print
+                if newMode == .customFrame && builderMode != .frameFirst {
+                    let printSize = selectedCropRatio.dimensions
+                    customFrameWidth = max(customFrameWidth, printSize.width)
+                    customFrameHeight = max(customFrameHeight, printSize.height)
+                }
                 updateMatFromStandardFrame()
             }
             .onChange(of: selectedCropRatio) { _, newRatio in
                 if framingMode == .standard {
                     selectedStandardFrameId = availableStandardFrames(for: newRatio).first?.id
+                }
+                // In frame-first mode the frame is fixed — never enlarge it to fit the print
+                if framingMode == .customFrame && builderMode != .frameFirst {
+                    let printSize = newRatio.dimensions
+                    customFrameWidth = max(customFrameWidth, printSize.width)
+                    customFrameHeight = max(customFrameHeight, printSize.height)
                 }
                 updateMatFromStandardFrame()
             }
@@ -291,8 +236,237 @@ struct BuildArtPieceView: View {
             .onChange(of: mattingStyle) { _, _ in
                 updateMatFromStandardFrame()
             }
+            .onChange(of: customFrameWidth) { _, _ in
+                updateMatFromStandardFrame()
+                ensureCropRatioCompatible()
+            }
+            .onChange(of: customFrameHeight) { _, _ in
+                updateMatFromStandardFrame()
+                ensureCropRatioCompatible()
+            }
         }
     }
+
+    // MARK: - iPad Layout
+
+    private var iPadLayout: some View {
+        HStack(spacing: 0) {
+            // Left: Large preview
+            previewArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            // Right: Scrollable controls
+            Form {
+                photoPickerSection
+                artworkNameSection
+                if builderMode == .frameFirst {
+                    frameAndMatSection
+                    printSizeSection
+                } else {
+                    printSizeSection
+                    frameAndMatSection
+                }
+                outputDimensionsSection
+            }
+            .frame(width: 380)
+        }
+    }
+
+    // MARK: - iPhone Layout
+
+    private var iPhoneLayout: some View {
+        Form {
+            Section {
+                previewArea
+                    .frame(height: 300)
+            }
+            .listRowInsets(EdgeInsets())
+
+            photoPickerSection
+            artworkNameSection
+            if builderMode == .frameFirst {
+                frameAndMatSection
+                printSizeSection
+            } else {
+                printSizeSection
+                frameAndMatSection
+            }
+            outputDimensionsSection
+        }
+    }
+
+    // MARK: - Shared Sections
+
+    @ViewBuilder
+    private var previewArea: some View {
+        ZStack {
+            Color(uiColor: .systemGray5)
+
+            if let selectedImageData, let uiImage = UIImage(data: selectedImageData) {
+                GeometryReader { geometry in
+                    let artworkAspectRatio = totalHeight > 0 ? totalWidth / totalHeight : 1.0
+                    let containerSize = geometry.size
+                    let containerAspectRatio = containerSize.width / containerSize.height
+
+                    let previewFrameSize = (containerAspectRatio > artworkAspectRatio) ?
+                        CGSize(width: containerSize.height * artworkAspectRatio, height: containerSize.height) :
+                        CGSize(width: containerSize.width, height: containerSize.width / artworkAspectRatio)
+
+                    let pointsPerInch = totalWidth > 0 ? previewFrameSize.width / totalWidth : 0
+                    let previewMatWidth = (selectedCropRatio.dimensions.width + matLeft + matRight) * pointsPerInch
+                    let previewMatHeight = (selectedCropRatio.dimensions.height + matTop + matBottom) * pointsPerInch
+                    let previewImageWidth = selectedCropRatio.dimensions.width * pointsPerInch
+                    let previewImageHeight = selectedCropRatio.dimensions.height * pointsPerInch
+
+                    let xOffset = (matLeft - matRight) / 2.0 * pointsPerInch
+                    let yOffset = (matTop - matBottom) / 2.0 * pointsPerInch
+
+                    ZStack {
+                        frameColor
+                        matColor.frame(width: previewMatWidth, height: previewMatHeight)
+                        ZoomableImageView(
+                            uiImage: uiImage,
+                            initialScale: initialScale,
+                            geometrySize: geometry.size,
+                            currentScale: $currentScale,
+                            finalScale: $finalScale,
+                            currentOffset: $currentOffset,
+                            finalOffset: $finalOffset
+                        )
+                        .frame(width: previewImageWidth, height: previewImageHeight)
+                        .clipped()
+                        .offset(x: xOffset, y: yOffset)
+                    }
+                    .frame(width: previewFrameSize.width, height: previewFrameSize.height)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    .task(id: PreviewConfig(totalWidth: totalWidth, totalHeight: totalHeight, imageIdentifier: selectedPhoto?.itemIdentifier)) {
+                        let imageCropBoxSize = CGSize(width: previewImageWidth, height: previewImageHeight)
+                        updateInitialScale(imageSize: uiImage.size, imageGestureAreaSize: geometry.size, imageCropBoxSize: imageCropBoxSize)
+                    }
+                }
+            } else {
+                Text("Select an Image to Begin").foregroundColor(.gray)
+            }
+        }
+    }
+
+    private var photoPickerSection: some View {
+        Section {
+            PhotosPicker(selection: $selectedPhoto, matching: .images, photoLibrary: .shared()) {
+                Label(selectedImageData == nil ? "Select Image" : "Change Image", systemImage: "photo.on.rectangle.angled")
+            }
+            .onChange(of: selectedPhoto) { oldValue, newValue in
+               Task {
+                   if let data = try? await newValue?.loadTransferable(type: Data.self) {
+                       selectedImageData = data
+                   }
+               }
+           }
+        }
+    }
+
+    private var artworkNameSection: some View {
+        Section(header: Text("Artwork Name")) {
+            TextField("e.g., \"My Masterpiece\"", text: $artworkName)
+        }
+    }
+
+    private var printSizeSection: some View {
+        Section(header: Text("Print Size")) {
+            let sizes = compatiblePrintSizes
+            if sizes.isEmpty {
+                Text("No standard print sizes fit this frame. Adjust frame dimensions or use Custom Mat mode.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Select Ratio", selection: $selectedCropRatio) {
+                    ForEach(sizes) { ratio in
+                        Text(ratio.rawValue).tag(ratio)
+                    }
+                }
+            }
+
+            if builderMode == .frameFirst {
+                Label {
+                    Text("Print sizes refer to paper dimensions. The image area is typically \u{00BD}\" smaller per side to allow for mounting.")
+                } icon: {
+                    Image(systemName: "info.circle")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var frameAndMatSection: some View {
+        DisclosureGroup("Frame & Mat Settings", isExpanded: $frameSettingsExpanded) {
+            Picker("Framing Style", selection: $framingMode) {
+                ForEach(FramingMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.bottom, 5)
+
+            Section(header: Text("Frame (Inches)")) {
+                ColorPicker("Frame Color", selection: $frameColor)
+                Stepper("Width: \(frameWidth, specifier: "%.2f") in", value: $frameWidth, in: 0.5...5, step: 0.25)
+            }
+
+            if framingMode == .custom {
+                Section(header: Text("Mat Dimensions (Inches)")) {
+                    ColorPicker("Mat Color", selection: $matColor)
+                    Stepper("Top: \(matTop, specifier: "%.2f") in", value: $matTop, in: 0...20, step: 0.25)
+                    Stepper("Bottom: \(matBottom, specifier: "%.2f") in", value: $matBottom, in: 0...20, step: 0.25)
+                    Stepper("Left: \(matLeft, specifier: "%.2f") in", value: $matLeft, in: 0...20, step: 0.25)
+                    Stepper("Right: \(matRight, specifier: "%.2f") in", value: $matRight, in: 0...20, step: 0.25)
+                }
+            } else if framingMode == .standard {
+                Section(header: Text("Standard Frame")) {
+                    ColorPicker("Mat Color", selection: $matColor)
+                    Picker("Size", selection: $selectedStandardFrameId) {
+                        ForEach(currentAvailableFrames) { frame in
+                            Text(frame.description).tag(frame.id as UUID?)
+                        }
+                    }
+                    if showMattingStylePicker {
+                        Picker("Matting Style", selection: $mattingStyle) {
+                            ForEach(MattingStyle.allCases) { style in
+                                Text(style.rawValue).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+            } else if framingMode == .customFrame {
+                Section(header: Text("Custom Frame Size")) {
+                    ColorPicker("Mat Color", selection: $matColor)
+                    Stepper("Inner Width: \(customFrameWidth, specifier: "%.1f") in", value: $customFrameWidth, in: 1...60, step: 0.5)
+                    Stepper("Inner Height: \(customFrameHeight, specifier: "%.1f") in", value: $customFrameHeight, in: 1...60, step: 0.5)
+                    if showMattingStylePicker {
+                        Picker("Matting Style", selection: $mattingStyle) {
+                            ForEach(MattingStyle.allCases) { style in
+                                Text(style.rawValue).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+            }
+        }
+    }
+
+    private var outputDimensionsSection: some View {
+        Section(header: Text("Output Dimensions (for AR)")) {
+            Text("Total Width: \(totalWidth, specifier: "%.2f") in")
+            Text("Total Height: \(totalHeight, specifier: "%.2f") in")
+        }
+    }
+
+    // MARK: - Functions
 
     private func initializeView() {
         if let artwork = artworkToEdit {
@@ -302,6 +476,8 @@ struct BuildArtPieceView: View {
             selectedCropRatio = artwork.cropRatio
             framingMode = artwork.framingMode
             selectedStandardFrameId = artwork.selectedStandardFrameId
+            customFrameWidth = artwork.customFrameWidthInches ?? 16.0
+            customFrameHeight = artwork.customFrameHeightInches ?? 20.0
             mattingStyle = artwork.mattingStyle
             frameWidth = artwork.frameWidthInches
             frameColor = artwork.frameColor
@@ -312,6 +488,33 @@ struct BuildArtPieceView: View {
             matRight = artwork.matRightInches
             finalScale = artwork.imageScale
             finalOffset = artwork.imageOffset
+        } else if builderMode == .frameFirst {
+            // Frame-first mode: use the user's actual frame dimensions
+            framingMode = .customFrame
+            frameSettingsExpanded = true
+            if let w = initialFrameWidth, let h = initialFrameHeight {
+                customFrameWidth = w
+                customFrameHeight = h
+            } else if let rec = designRecommendation {
+                let avgW = ((rec.sizeRange.minWidthInches + rec.sizeRange.maxWidthInches) / 2.0).rounded()
+                let avgH = ((rec.sizeRange.minHeightInches + rec.sizeRange.maxHeightInches) / 2.0).rounded()
+                customFrameWidth = avgW
+                customFrameHeight = avgH
+            }
+            // Select best print and compute mat immediately
+            selectBestPrintForFrame()
+            // Also run deferred to catch cases where @State defaults matched entered values
+            Task { @MainActor in
+                selectBestPrintForFrame()
+                updateMatFromStandardFrame()
+            }
+        } else if let rec = designRecommendation {
+            // Photo-first with recommendation — apply size guidance
+            framingMode = .customFrame
+            let avgW = ((rec.sizeRange.minWidthInches + rec.sizeRange.maxWidthInches) / 2.0).rounded()
+            let avgH = ((rec.sizeRange.minHeightInches + rec.sizeRange.maxHeightInches) / 2.0).rounded()
+            customFrameWidth = avgW
+            customFrameHeight = avgH
         }
         updateMatFromStandardFrame()
     }
@@ -358,19 +561,28 @@ struct BuildArtPieceView: View {
     }
 
     private func updateMatFromStandardFrame() {
-        guard framingMode == .standard else { return }
+        guard framingMode == .standard || framingMode == .customFrame else { return }
 
         let printSize = selectedCropRatio.dimensions
+        var frameInnerWidth: Double
+        var frameInnerHeight: Double
 
-        guard let frameId = selectedStandardFrameId,
-              let standardFrame = currentAvailableFrames.first(where: { $0.id == frameId })
-        else {
-            matTop = 0; matBottom = 0; matLeft = 0; matRight = 0
-            return
+        if framingMode == .standard {
+            guard let frameId = selectedStandardFrameId,
+                  let standardFrame = currentAvailableFrames.first(where: { $0.id == frameId })
+            else {
+                matTop = 0; matBottom = 0; matLeft = 0; matRight = 0
+                return
+            }
+            frameInnerWidth = standardFrame.width
+            frameInnerHeight = standardFrame.height
+        } else {
+            frameInnerWidth = customFrameWidth
+            frameInnerHeight = customFrameHeight
         }
 
-        let totalHorizontalMat = standardFrame.width - printSize.width
-        let totalVerticalMat = standardFrame.height - printSize.height
+        let totalHorizontalMat = frameInnerWidth - printSize.width
+        let totalVerticalMat = frameInnerHeight - printSize.height
 
         if mattingStyle == .bottomWeighted && showMattingStylePicker {
             // Bottom-weighted: top, left, and right mats are equal
@@ -378,13 +590,35 @@ struct BuildArtPieceView: View {
             matLeft = max(0, sideMat)
             matRight = max(0, sideMat)
             matTop = max(0, sideMat)
-            matBottom = max(0, standardFrame.height - printSize.height - matTop)
+            matBottom = max(0, frameInnerHeight - printSize.height - matTop)
         } else {
             // Centered: the default behavior
             matLeft = max(0, totalHorizontalMat / 2.0)
             matRight = max(0, totalHorizontalMat / 2.0)
             matTop = max(0, totalVerticalMat / 2.0)
             matBottom = max(0, totalVerticalMat / 2.0)
+        }
+    }
+
+    /// In frame-first mode, ensure the selected crop ratio still fits when frame size changes
+    private func ensureCropRatioCompatible() {
+        guard builderMode == .frameFirst else { return }
+        let sizes = compatiblePrintSizes
+        if !sizes.contains(selectedCropRatio), let first = sizes.first {
+            selectedCropRatio = first
+        }
+    }
+
+    /// Select the largest print size that fits inside the current custom frame
+    private func selectBestPrintForFrame() {
+        let best = CropRatio.allCases.filter { ratio in
+            let d = ratio.dimensions
+            return d.width <= customFrameWidth && d.height <= customFrameHeight
+        }.max { a, b in
+            a.dimensions.width * a.dimensions.height < b.dimensions.width * b.dimensions.height
+        }
+        if let best {
+            selectedCropRatio = best
         }
     }
 }
