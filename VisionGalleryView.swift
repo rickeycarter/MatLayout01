@@ -24,11 +24,38 @@ final class ImmersiveGalleryViewModel {
     var placedArtworks: [UUID: Entity] = [:]
     private var artworkWallMapping: [UUID: UUID] = [:]  // artworkId -> wallAnchorId
     private var artworkDepthOffset: [UUID: Float] = [:]  // artworkId -> half frame depth
-    var selectedArtworkForPlacement: ArtworkConfiguration?
+    var selectedArtworkForPlacement: ArtworkConfiguration? {
+        didSet { updateTargetRectangles() }
+    }
     var selectedPlacedArtworkId: UUID?
     var showWallLocators: Bool = true {
         didSet { updateWallLocatorVisibility() }
     }
+
+    // MARK: Placement Guides
+    var showPlacementGuides: Bool = false {
+        didSet { updateGuideVisibility() }
+    }
+    var guideCenterHeightInches: Double = 57.0 {
+        didSet { updateAllGuidePositions() }
+    }
+    var currentHeightOffsetInches: Double? = nil
+    private var guideEntities: [UUID: Entity] = [:]  // wallAnchorId -> guide root
+    private let snapThresholdMeters: Float = 0.04    // ~1.6 inches
+
+    // MARK: Nail Guides
+    var showNailGuides: Bool = false {
+        didSet { updateNailGuides() }
+    }
+    private var nailGuideEntities: [UUID: Entity] = [:]       // artworkId -> nail guide root
+    private var placedArtworkConfigs: [UUID: ArtworkConfiguration] = [:]
+    private let defaultHangerDropInches: Double = 1.5
+
+    private let nailMaterial: UnlitMaterial = {
+        var mat = UnlitMaterial()
+        mat.color = .init(tint: UIColor(red: 0.2, green: 1.0, blue: 0.2, alpha: 1.0))
+        return mat
+    }()
 
     let rootEntity = Entity()
     private var wallColliders: [UUID: Entity] = [:]
@@ -38,6 +65,14 @@ final class ImmersiveGalleryViewModel {
         mat.color = .init(tint: .cyan.withAlphaComponent(0.15))
         return mat
     }()
+
+    private let guideMaterial: UnlitMaterial = {
+        var mat = UnlitMaterial()
+        mat.color = .init(tint: UIColor(red: 1.0, green: 0.75, blue: 0.0, alpha: 0.7))
+        return mat
+    }()
+    private let guideStrokeWidth: Float = 0.004  // 4mm visible stroke
+    private let guideDepth: Float = 0.002         // 2mm depth
 
     // MARK: ARKit Session
 
@@ -67,6 +102,7 @@ final class ImmersiveGalleryViewModel {
                 updateWallCollider(for: anchor)
             case .removed:
                 detectedWalls.removeValue(forKey: anchor.id)
+                guideEntities.removeValue(forKey: anchor.id)
                 if let collider = wallColliders.removeValue(forKey: anchor.id) {
                     collider.removeFromParent()
                 }
@@ -113,6 +149,17 @@ final class ImmersiveGalleryViewModel {
             // Recreating destroys gesture tracking state.
             existing.orientation = orientation
             existing.position = position
+            // Update guide line width and position if wall extent changed
+            if let guideRoot = guideEntities[anchor.id] {
+                positionGuide(guideRoot, onWall: existing)
+                if let line = guideRoot.findEntity(named: "guideLine") as? ModelEntity {
+                    line.model?.mesh = MeshResource.generateBox(
+                        width: anchor.geometry.extent.width,
+                        height: guideStrokeWidth,
+                        depth: guideDepth
+                    )
+                }
+            }
             return
         }
 
@@ -144,6 +191,7 @@ final class ImmersiveGalleryViewModel {
 
         rootEntity.addChild(entity)
         wallColliders[anchor.id] = entity
+        createGuideEntities(for: anchor.id, wallEntity: entity, extentWidth: extent.width)
 
         print("[Gallery] Wall collider CREATED: \(anchor.id) classification=\(anchor.surfaceClassification)")
     }
@@ -155,6 +203,111 @@ final class ImmersiveGalleryViewModel {
             } else {
                 entity.components.set(OpacityComponent(opacity: 0))
             }
+        }
+    }
+
+    // MARK: Placement Guides
+
+    private func createGuideEntities(for anchorId: UUID, wallEntity: Entity, extentWidth: Float) {
+        let guideRoot = Entity()
+        guideRoot.name = "guide-\(anchorId.uuidString)"
+
+        // Center height line spanning the wall width
+        let lineMesh = MeshResource.generateBox(width: extentWidth, height: guideStrokeWidth, depth: guideDepth)
+        let lineEntity = ModelEntity(mesh: lineMesh, materials: [guideMaterial])
+        lineEntity.name = "guideLine"
+        guideRoot.addChild(lineEntity)
+
+        // Target rectangle (4 edges) — hidden until artwork is selected for placement
+        let targetRoot = Entity()
+        targetRoot.name = "guideTarget"
+        targetRoot.components.set(OpacityComponent(opacity: 0))
+
+        for edgeName in ["targetTop", "targetBottom", "targetLeft", "targetRight"] {
+            let edge = ModelEntity(
+                mesh: MeshResource.generateBox(width: 0.01, height: 0.01, depth: guideDepth),
+                materials: [guideMaterial]
+            )
+            edge.name = edgeName
+            targetRoot.addChild(edge)
+        }
+        guideRoot.addChild(targetRoot)
+
+        positionGuide(guideRoot, onWall: wallEntity)
+
+        if !showPlacementGuides {
+            guideRoot.components.set(OpacityComponent(opacity: 0))
+        }
+
+        wallEntity.addChild(guideRoot)
+        guideEntities[anchorId] = guideRoot
+    }
+
+    private func positionGuide(_ guideRoot: Entity, onWall wallEntity: Entity) {
+        let inchToMeter: Float = 0.0254
+        let idealHeightMeters = Float(guideCenterHeightInches) * inchToMeter
+        let wallWorldY = wallEntity.position(relativeTo: nil).y
+        let localY = idealHeightMeters - wallWorldY
+        guideRoot.position = SIMD3<Float>(0, localY, guideDepth / 2.0)
+    }
+
+    private func updateAllGuidePositions() {
+        for (anchorId, guideRoot) in guideEntities {
+            guard let wallEntity = wallColliders[anchorId] else { continue }
+            positionGuide(guideRoot, onWall: wallEntity)
+        }
+    }
+
+    private func updateGuideVisibility() {
+        for (_, guideRoot) in guideEntities {
+            if showPlacementGuides {
+                guideRoot.components.remove(OpacityComponent.self)
+                updateTargetRectangles()
+            } else {
+                guideRoot.components.set(OpacityComponent(opacity: 0))
+            }
+        }
+    }
+
+    private func updateTargetRectangles() {
+        guard showPlacementGuides else { return }
+
+        guard let config = selectedArtworkForPlacement else {
+            // Hide all target rectangles
+            for (_, guideRoot) in guideEntities {
+                if let target = guideRoot.findEntity(named: "guideTarget") {
+                    target.components.set(OpacityComponent(opacity: 0))
+                }
+            }
+            return
+        }
+
+        let inchToMeter: Float = 0.0254
+        let artW = Float(config.totalWidthInches) * inchToMeter
+        let artH = Float(config.totalHeightInches) * inchToMeter
+        let stroke = guideStrokeWidth
+
+        for (_, guideRoot) in guideEntities {
+            guard let target = guideRoot.findEntity(named: "guideTarget") else { continue }
+
+            if let top = target.findEntity(named: "targetTop") as? ModelEntity {
+                top.model?.mesh = MeshResource.generateBox(width: artW, height: stroke, depth: guideDepth)
+                top.position = SIMD3(0, artH / 2.0, 0)
+            }
+            if let bottom = target.findEntity(named: "targetBottom") as? ModelEntity {
+                bottom.model?.mesh = MeshResource.generateBox(width: artW, height: stroke, depth: guideDepth)
+                bottom.position = SIMD3(0, -artH / 2.0, 0)
+            }
+            if let left = target.findEntity(named: "targetLeft") as? ModelEntity {
+                left.model?.mesh = MeshResource.generateBox(width: stroke, height: artH, depth: guideDepth)
+                left.position = SIMD3(-artW / 2.0, 0, 0)
+            }
+            if let right = target.findEntity(named: "targetRight") as? ModelEntity {
+                right.model?.mesh = MeshResource.generateBox(width: stroke, height: artH, depth: guideDepth)
+                right.position = SIMD3(artW / 2.0, 0, 0)
+            }
+
+            target.components.remove(OpacityComponent.self)
         }
     }
 
@@ -203,7 +356,15 @@ final class ImmersiveGalleryViewModel {
         // Offset outward from the wall so the frame sits flush (not embedded)
         let inchToMeter: Float = 0.0254
         let halfFrameDepth = Float(config.frameWidthInches) * inchToMeter * 0.75 / 2.0
-        let offsetPosition = scenePosition + wallNormal * halfFrameDepth
+        var offsetPosition = scenePosition + wallNormal * halfFrameDepth
+
+        // Snap to guide center height if guides are on and within threshold
+        if showPlacementGuides {
+            let idealY = Float(guideCenterHeightInches) * inchToMeter
+            if abs(offsetPosition.y - idealY) < snapThresholdMeters {
+                offsetPosition.y = idealY
+            }
+        }
 
         var placementMatrix = matrix_identity_float4x4
         placementMatrix.columns.0 = SIMD4(wallRight, 0)
@@ -219,7 +380,13 @@ final class ImmersiveGalleryViewModel {
         placedArtworks[artworkId] = artworkEntity
         artworkWallMapping[artworkId] = wallId
         artworkDepthOffset[artworkId] = halfFrameDepth
+        placedArtworkConfigs[artworkId] = config
         print("[Gallery] Placed artwork '\(config.artworkName)' at \(scenePosition)")
+
+        // Create nail guide if nails are currently shown
+        if showNailGuides {
+            createNailGuide(for: artworkId)
+        }
 
         // Exit placement mode after placing
         selectedArtworkForPlacement = nil
@@ -253,13 +420,155 @@ final class ImmersiveGalleryViewModel {
         return dragPosition - projectedOffset * wallNormal + wallNormal * depthOffset
     }
 
+    /// Projects onto the wall, then optionally snaps to the guide center height.
+    func projectOntoWallWithSnap(artworkEntity: Entity, dragPosition: SIMD3<Float>) -> SIMD3<Float> {
+        var projected = projectOntoWall(artworkEntity: artworkEntity, dragPosition: dragPosition)
+
+        if showPlacementGuides {
+            let inchToMeter: Float = 0.0254
+            let idealY = Float(guideCenterHeightInches) * inchToMeter
+            let offsetY = projected.y - idealY
+            currentHeightOffsetInches = Double(offsetY) / Double(inchToMeter)
+
+            if abs(offsetY) < snapThresholdMeters {
+                projected.y = idealY
+                currentHeightOffsetInches = 0
+            }
+        } else {
+            currentHeightOffsetInches = nil
+        }
+
+        return projected
+    }
+
+    // MARK: Nail Guides
+
+    private func nailPosition(for artworkId: UUID) -> SIMD3<Float>? {
+        guard let entity = placedArtworks[artworkId],
+              let config = placedArtworkConfigs[artworkId] else { return nil }
+
+        let inchToMeter: Float = 0.0254
+        let frameHalfHeight = Float(config.totalHeightInches) * inchToMeter / 2.0
+        let hangerDrop = Float(config.hangerDropInches ?? defaultHangerDropInches) * inchToMeter
+
+        let artPos = entity.position(relativeTo: nil)
+        let nailY = artPos.y + frameHalfHeight - hangerDrop
+
+        let nailZ = artPos.z // keep same Z plane as artwork center
+
+        return SIMD3<Float>(artPos.x, nailY, nailZ)
+    }
+
+    private func formatHeight(meters: Float) -> String {
+        let totalInches = Double(meters) / 0.0254
+        let feet = Int(totalInches / 12.0)
+        let inches = totalInches - Double(feet * 12)
+        if feet > 0 {
+            return String(format: "%d' %.1f\"", feet, inches)
+        } else {
+            return String(format: "%.1f\"", inches)
+        }
+    }
+
+    private func createNailGuide(for artworkId: UUID) {
+        // Remove existing guide if any
+        if let existing = nailGuideEntities.removeValue(forKey: artworkId) {
+            existing.removeFromParent()
+        }
+
+        guard let pos = nailPosition(for: artworkId) else { return }
+
+        let guideRoot = Entity()
+        guideRoot.name = "nail-\(artworkId.uuidString)"
+        guideRoot.position = pos
+
+        // Crosshair: center sphere
+        let sphere = ModelEntity(
+            mesh: .generateSphere(radius: 0.008),
+            materials: [nailMaterial]
+        )
+        guideRoot.addChild(sphere)
+
+        // Crosshair: horizontal line
+        let hLine = ModelEntity(
+            mesh: MeshResource.generateBox(width: 0.04, height: 0.003, depth: 0.002),
+            materials: [nailMaterial]
+        )
+        guideRoot.addChild(hLine)
+
+        // Crosshair: vertical line
+        let vLine = ModelEntity(
+            mesh: MeshResource.generateBox(width: 0.003, height: 0.04, depth: 0.002),
+            materials: [nailMaterial]
+        )
+        guideRoot.addChild(vLine)
+
+        // Height label
+        let heightText = formatHeight(meters: pos.y)
+        let textMesh = MeshResource.generateText(
+            heightText,
+            extrusionDepth: 0.001,
+            font: .systemFont(ofSize: 0.02),
+            containerFrame: .zero,
+            alignment: .left,
+            lineBreakMode: .byClipping
+        )
+        let textEntity = ModelEntity(mesh: textMesh, materials: [nailMaterial])
+        textEntity.name = "nailLabel"
+        // Position label to the right of the crosshair
+        textEntity.position = SIMD3<Float>(0.03, -0.01, 0)
+        guideRoot.addChild(textEntity)
+
+        rootEntity.addChild(guideRoot)
+        nailGuideEntities[artworkId] = guideRoot
+    }
+
+    func updateNailGuidePosition(for artworkId: UUID) {
+        guard let guideRoot = nailGuideEntities[artworkId],
+              let pos = nailPosition(for: artworkId) else { return }
+        guideRoot.position = pos
+
+        // Update height label text
+        let heightText = formatHeight(meters: pos.y)
+        if let textEntity = guideRoot.children.reversed().first(where: { $0 is ModelEntity }) as? ModelEntity, textEntity.name == "nailLabel" {
+            textEntity.model?.mesh = MeshResource.generateText(
+                heightText,
+                extrusionDepth: 0.001,
+                font: .systemFont(ofSize: 0.02),
+                containerFrame: .zero,
+                alignment: .left,
+                lineBreakMode: .byClipping
+            )
+        }
+    }
+
+    private func updateNailGuides() {
+        if showNailGuides {
+            // Create guides for all placed artworks
+            for artworkId in placedArtworks.keys {
+                createNailGuide(for: artworkId)
+            }
+        } else {
+            // Remove all nail guides
+            for (_, guide) in nailGuideEntities {
+                guide.removeFromParent()
+            }
+            nailGuideEntities.removeAll()
+        }
+    }
+
     func removeAllPlaced() {
         for (_, entity) in placedArtworks {
             entity.removeFromParent()
         }
+        for (_, guide) in nailGuideEntities {
+            guide.removeFromParent()
+        }
         placedArtworks.removeAll()
         artworkWallMapping.removeAll()
         artworkDepthOffset.removeAll()
+        placedArtworkConfigs.removeAll()
+        nailGuideEntities.removeAll()
         selectedPlacedArtworkId = nil
     }
 
@@ -267,8 +576,12 @@ final class ImmersiveGalleryViewModel {
         if let entity = placedArtworks.removeValue(forKey: id) {
             entity.removeFromParent()
         }
+        if let guide = nailGuideEntities.removeValue(forKey: id) {
+            guide.removeFromParent()
+        }
         artworkWallMapping.removeValue(forKey: id)
         artworkDepthOffset.removeValue(forKey: id)
+        placedArtworkConfigs.removeValue(forKey: id)
         if selectedPlacedArtworkId == id {
             selectedPlacedArtworkId = nil
         }
@@ -340,10 +653,20 @@ struct VisionGalleryView: View {
             .onChanged { value in
                 guard value.entity.name.hasPrefix("artwork-") else { return }
                 let scenePos = value.convert(value.location3D, from: .local, to: .scene)
-                value.entity.position = viewModel.projectOntoWall(
+                value.entity.position = viewModel.projectOntoWallWithSnap(
                     artworkEntity: value.entity,
                     dragPosition: scenePos
                 )
+                // Update nail guide position if visible
+                if viewModel.showNailGuides {
+                    let idStr = value.entity.name.replacingOccurrences(of: "artwork-", with: "")
+                    if let artworkId = UUID(uuidString: idStr) {
+                        viewModel.updateNailGuidePosition(for: artworkId)
+                    }
+                }
+            }
+            .onEnded { _ in
+                viewModel.currentHeightOffsetInches = nil
             }
     }
 
@@ -351,12 +674,27 @@ struct VisionGalleryView: View {
 
     private var toolbarContent: some View {
         VStack(spacing: 12) {
-            if let selected = viewModel.selectedArtworkForPlacement {
+            if let offset = viewModel.currentHeightOffsetInches, viewModel.showPlacementGuides {
+                if abs(offset) < 0.5 {
+                    Label("Snapped to ideal center (\(Int(viewModel.guideCenterHeightInches))\")", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                } else {
+                    let direction = offset > 0 ? "above" : "below"
+                    Label(String(format: "%.1f\" %@ ideal center (%d\")", abs(offset), direction, Int(viewModel.guideCenterHeightInches)), systemImage: "arrow.up.and.down")
+                        .font(.headline)
+                        .foregroundStyle(.orange)
+                }
+            } else if let selected = viewModel.selectedArtworkForPlacement {
                 Label("Look at a wall and pinch to place \"\(selected.artworkName)\"", systemImage: "hand.pinch")
                     .font(.headline)
             } else if viewModel.selectedPlacedArtworkId != nil {
                 Label("Artwork selected — drag to move, or tap Remove", systemImage: "hand.point.up.left")
                     .font(.headline)
+            } else if viewModel.showNailGuides && !viewModel.placedArtworks.isEmpty {
+                Label("Nail positions for \(viewModel.placedArtworks.count) piece\(viewModel.placedArtworks.count == 1 ? "" : "s")", systemImage: "scope")
+                    .font(.headline)
+                    .foregroundStyle(.green)
             } else if viewModel.placedArtworks.isEmpty {
                 Text("Select an artwork to place on a wall")
                     .font(.headline)
@@ -405,6 +743,30 @@ struct VisionGalleryView: View {
                 }
                 .buttonStyle(.bordered)
 
+                Button {
+                    viewModel.showPlacementGuides.toggle()
+                } label: {
+                    Label(
+                        viewModel.showPlacementGuides ? "Hide Guides" : "Show Guides",
+                        systemImage: viewModel.showPlacementGuides ? "ruler.fill" : "ruler"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .tint(viewModel.showPlacementGuides ? .orange : nil)
+
+                if !viewModel.placedArtworks.isEmpty {
+                    Button {
+                        viewModel.showNailGuides.toggle()
+                    } label: {
+                        Label(
+                            viewModel.showNailGuides ? "Hide Nails" : "Show Nails",
+                            systemImage: viewModel.showNailGuides ? "scope" : "scope"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(viewModel.showNailGuides ? .green : nil)
+                }
+
                 if viewModel.selectedArtworkForPlacement != nil {
                     Button("Cancel") {
                         viewModel.selectedArtworkForPlacement = nil
@@ -443,10 +805,25 @@ struct VisionGalleryView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+
+            if viewModel.showPlacementGuides {
+                Divider()
+                HStack {
+                    Text("Center Height")
+                        .font(.subheadline)
+                    Spacer()
+                    Text("\(Int(viewModel.guideCenterHeightInches))\"")
+                        .font(.subheadline)
+                        .monospacedDigit()
+                    Stepper("", value: Bindable(viewModel).guideCenterHeightInches, in: 48...72, step: 1)
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 8)
+            }
         }
         .padding(20)
         .glassBackgroundEffect()
-        .frame(width: 500)
+        .frame(width: 1000)
     }
 }
 
