@@ -15,6 +15,12 @@ struct ProductionInstructionsView: View {
             Section(header: Text("Artwork Details")) {
                 LabeledContent("Name", value: artwork.artworkName)
                 LabeledContent("Print Size", value: "\(String(format: "%.2f", artwork.printWidthInches))\" x \(String(format: "%.2f", artwork.printHeightInches))\"")
+                if artwork.hasPreCutMat {
+                    LabeledContent("Mat Opening", value: "\(String(format: "%.2f", artwork.printWidthInches))\" x \(String(format: "%.2f", artwork.printHeightInches))\"")
+                    Label("This artwork uses a pre-cut mat. Dimensions above reflect the mat opening.", systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section(header: Text("Mat Details")) {

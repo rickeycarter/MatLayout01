@@ -66,7 +66,27 @@ struct BuildArtPieceView: View {
     @State private var customFrameWidth: Double = 16.0
     @State private var customFrameHeight: Double = 20.0
 
+    // Pre-cut mat (frame-first mode only)
+    @State private var hasPreCutMat: Bool = false
+    @State private var matOpeningWidth: Double = 8.0
+    @State private var matOpeningHeight: Double = 10.0
+
     // MARK: - Computed Properties
+
+    /// Effective print dimensions: from pre-cut mat opening or selected CropRatio
+    private var effectivePrintWidth: Double {
+        if builderMode == .frameFirst && hasPreCutMat {
+            return matOpeningWidth
+        }
+        return selectedCropRatio.dimensions.width
+    }
+
+    private var effectivePrintHeight: Double {
+        if builderMode == .frameFirst && hasPreCutMat {
+            return matOpeningHeight
+        }
+        return selectedCropRatio.dimensions.height
+    }
 
     var totalWidth: Double {
         if framingMode == .standard,
@@ -77,7 +97,7 @@ struct BuildArtPieceView: View {
         if framingMode == .customFrame {
             return customFrameWidth + (frameWidth * 2)
         }
-        return selectedCropRatio.dimensions.width + matLeft + matRight + (frameWidth * 2)
+        return effectivePrintWidth + matLeft + matRight + (frameWidth * 2)
     }
 
     var totalHeight: Double {
@@ -89,7 +109,7 @@ struct BuildArtPieceView: View {
         if framingMode == .customFrame {
             return customFrameHeight + (frameWidth * 2)
         }
-        return selectedCropRatio.dimensions.height + matTop + matBottom + (frameWidth * 2)
+        return effectivePrintHeight + matTop + matBottom + (frameWidth * 2)
     }
 
     var finalImageTransform: (scale: CGFloat, offset: CGSize) {
@@ -107,7 +127,7 @@ struct BuildArtPieceView: View {
     }
 
     private var showMattingStylePicker: Bool {
-        let printSize = selectedCropRatio.dimensions
+        let printSize = (width: effectivePrintWidth, height: effectivePrintHeight)
         var frameInnerWidth: Double
         var frameInnerHeight: Double
 
@@ -186,8 +206,8 @@ struct BuildArtPieceView: View {
                             frameWidthInches: frameWidth,
                             imageScale: finalImageTransform.scale,
                             imageOffset: finalOffset,
-                            printWidthInches: selectedCropRatio.dimensions.width,
-                            printHeightInches: selectedCropRatio.dimensions.height,
+                            printWidthInches: effectivePrintWidth,
+                            printHeightInches: effectivePrintHeight,
                             matTopInches: matTop,
                             matBottomInches: matBottom,
                             matLeftInches: matLeft,
@@ -197,7 +217,8 @@ struct BuildArtPieceView: View {
                             mattingStyle: mattingStyle,
                             selectedStandardFrameId: selectedStandardFrameId,
                             customFrameWidthInches: framingMode == .customFrame ? customFrameWidth : nil,
-                            customFrameHeightInches: framingMode == .customFrame ? customFrameHeight : nil
+                            customFrameHeightInches: framingMode == .customFrame ? customFrameHeight : nil,
+                            hasPreCutMat: hasPreCutMat
                         )
                         onComplete(config)
                         dismiss()
@@ -215,6 +236,10 @@ struct BuildArtPieceView: View {
                     let printSize = selectedCropRatio.dimensions
                     customFrameWidth = max(customFrameWidth, printSize.width)
                     customFrameHeight = max(customFrameHeight, printSize.height)
+                }
+                // Reset pre-cut mat when leaving customFrame mode
+                if newMode != .customFrame {
+                    hasPreCutMat = false
                 }
                 updateMatFromStandardFrame()
             }
@@ -237,12 +262,34 @@ struct BuildArtPieceView: View {
                 updateMatFromStandardFrame()
             }
             .onChange(of: customFrameWidth) { _, _ in
+                if hasPreCutMat {
+                    matOpeningWidth = min(matOpeningWidth, customFrameWidth)
+                }
                 updateMatFromStandardFrame()
                 ensureCropRatioCompatible()
             }
             .onChange(of: customFrameHeight) { _, _ in
+                if hasPreCutMat {
+                    matOpeningHeight = min(matOpeningHeight, customFrameHeight)
+                }
                 updateMatFromStandardFrame()
                 ensureCropRatioCompatible()
+            }
+            .onChange(of: hasPreCutMat) { _, newValue in
+                if newValue {
+                    // Default mat opening to 2" smaller than frame inner on each side
+                    matOpeningWidth = max(1, customFrameWidth - 4.0)
+                    matOpeningHeight = max(1, customFrameHeight - 4.0)
+                }
+                updateMatFromStandardFrame()
+            }
+            .onChange(of: matOpeningWidth) { _, _ in
+                matOpeningWidth = min(matOpeningWidth, customFrameWidth)
+                updateMatFromStandardFrame()
+            }
+            .onChange(of: matOpeningHeight) { _, _ in
+                matOpeningHeight = min(matOpeningHeight, customFrameHeight)
+                updateMatFromStandardFrame()
             }
         }
     }
@@ -263,7 +310,10 @@ struct BuildArtPieceView: View {
                 artworkNameSection
                 if builderMode == .frameFirst {
                     frameAndMatSection
-                    printSizeSection
+                    preCutMatSection
+                    if !hasPreCutMat {
+                        printSizeSection
+                    }
                 } else {
                     printSizeSection
                     frameAndMatSection
@@ -288,7 +338,10 @@ struct BuildArtPieceView: View {
             artworkNameSection
             if builderMode == .frameFirst {
                 frameAndMatSection
-                printSizeSection
+                preCutMatSection
+                if !hasPreCutMat {
+                    printSizeSection
+                }
             } else {
                 printSizeSection
                 frameAndMatSection
@@ -315,10 +368,10 @@ struct BuildArtPieceView: View {
                         CGSize(width: containerSize.width, height: containerSize.width / artworkAspectRatio)
 
                     let pointsPerInch = totalWidth > 0 ? previewFrameSize.width / totalWidth : 0
-                    let previewMatWidth = (selectedCropRatio.dimensions.width + matLeft + matRight) * pointsPerInch
-                    let previewMatHeight = (selectedCropRatio.dimensions.height + matTop + matBottom) * pointsPerInch
-                    let previewImageWidth = selectedCropRatio.dimensions.width * pointsPerInch
-                    let previewImageHeight = selectedCropRatio.dimensions.height * pointsPerInch
+                    let previewMatWidth = (effectivePrintWidth + matLeft + matRight) * pointsPerInch
+                    let previewMatHeight = (effectivePrintHeight + matTop + matBottom) * pointsPerInch
+                    let previewImageWidth = effectivePrintWidth * pointsPerInch
+                    let previewImageHeight = effectivePrintHeight * pointsPerInch
 
                     let xOffset = (matLeft - matRight) / 2.0 * pointsPerInch
                     let yOffset = (matTop - matBottom) / 2.0 * pointsPerInch
@@ -396,6 +449,34 @@ struct BuildArtPieceView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var preCutMatSection: some View {
+        if builderMode == .frameFirst && framingMode == .customFrame {
+            Section(header: Text("Pre-Cut Mat")) {
+                Toggle("Frame has a pre-cut mat", isOn: $hasPreCutMat)
+
+                if hasPreCutMat {
+                    Text("Enter the mat opening dimensions — the visible area where your image shows through.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Stepper("Opening Width: \(matOpeningWidth, specifier: "%.1f") in",
+                            value: $matOpeningWidth, in: 1...max(1, customFrameWidth), step: 0.5)
+                    Stepper("Opening Height: \(matOpeningHeight, specifier: "%.1f") in",
+                            value: $matOpeningHeight, in: 1...max(1, customFrameHeight), step: 0.5)
+
+                    let hMat = (customFrameWidth - matOpeningWidth) / 2.0
+                    let vMat = (customFrameHeight - matOpeningHeight) / 2.0
+                    if hMat >= 0 && vMat >= 0 {
+                        Text("Mat borders: \(String(format: "%.1f", hMat))\" sides, \(String(format: "%.1f", vMat))\" top/bottom")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
     }
@@ -488,6 +569,11 @@ struct BuildArtPieceView: View {
             matRight = artwork.matRightInches
             finalScale = artwork.imageScale
             finalOffset = artwork.imageOffset
+            hasPreCutMat = artwork.hasPreCutMat
+            if artwork.hasPreCutMat {
+                matOpeningWidth = artwork.printWidthInches
+                matOpeningHeight = artwork.printHeightInches
+            }
         } else if builderMode == .frameFirst {
             // Frame-first mode: use the user's actual frame dimensions
             framingMode = .customFrame
@@ -563,7 +649,7 @@ struct BuildArtPieceView: View {
     private func updateMatFromStandardFrame() {
         guard framingMode == .standard || framingMode == .customFrame else { return }
 
-        let printSize = selectedCropRatio.dimensions
+        let printSize = (width: effectivePrintWidth, height: effectivePrintHeight)
         var frameInnerWidth: Double
         var frameInnerHeight: Double
 

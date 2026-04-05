@@ -117,6 +117,7 @@ extension ArtworkConfiguration: Codable {
         case mattingStyle, selectedStandardFrameId
         case customFrameWidthInches, customFrameHeightInches
         case hangerDropInches
+        case hasPreCutMat
         case isAREnabledForFree
     }
 
@@ -147,9 +148,10 @@ extension ArtworkConfiguration: Codable {
         let customFrameWidthInches = try container.decodeIfPresent(Double.self, forKey: .customFrameWidthInches)
         let customFrameHeightInches = try container.decodeIfPresent(Double.self, forKey: .customFrameHeightInches)
         let hangerDropInches = try container.decodeIfPresent(Double.self, forKey: .hangerDropInches)
+        let hasPreCutMat = try container.decodeIfPresent(Bool.self, forKey: .hasPreCutMat) ?? false
         let isAREnabledForFree = try container.decodeIfPresent(Bool.self, forKey: .isAREnabledForFree) ?? false
 
-        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId, customFrameWidthInches: customFrameWidthInches, customFrameHeightInches: customFrameHeightInches, hangerDropInches: hangerDropInches, isAREnabledForFree: isAREnabledForFree)
+        self.init(id: id, artworkName: artworkName, imageData: imageData, totalWidthInches: totalWidthInches, totalHeightInches: totalHeightInches, matColor: matColor, frameColor: frameColor, frameWidthInches: frameWidthInches, imageScale: imageScale, imageOffset: imageOffset, printWidthInches: printWidthInches, printHeightInches: printHeightInches, matTopInches: matTopInches, matBottomInches: matBottomInches, matLeftInches: matLeftInches, matRightInches: matRightInches, cropRatio: cropRatio, framingMode: framingMode, mattingStyle: mattingStyle, selectedStandardFrameId: selectedStandardFrameId, customFrameWidthInches: customFrameWidthInches, customFrameHeightInches: customFrameHeightInches, hangerDropInches: hangerDropInches, hasPreCutMat: hasPreCutMat, isAREnabledForFree: isAREnabledForFree)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -178,6 +180,7 @@ extension ArtworkConfiguration: Codable {
         try container.encodeIfPresent(customFrameWidthInches, forKey: .customFrameWidthInches)
         try container.encodeIfPresent(customFrameHeightInches, forKey: .customFrameHeightInches)
         try container.encodeIfPresent(hangerDropInches, forKey: .hangerDropInches)
+        try container.encode(hasPreCutMat, forKey: .hasPreCutMat)
         try container.encode(isAREnabledForFree, forKey: .isAREnabledForFree)
     }
 }

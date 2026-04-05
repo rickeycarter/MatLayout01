@@ -47,8 +47,7 @@ struct ContentView: View {
     #endif
     // State to manually re-show the instructions screen.
     @State private var showInstructionsSheet = false
-    // State for the upgrade sheet
-    @State private var showUpgradeSheet = false
+
     // iPad selection
     @State private var selectedArtworkId: UUID?
 
@@ -89,9 +88,7 @@ struct ContentView: View {
         .sheet(isPresented: $showInstructionsSheet) {
             InstructionsOverlayView(isPresented: $showInstructionsSheet)
         }
-        .sheet(isPresented: $showUpgradeSheet) {
-            UpgradeView(isPresented: $showUpgradeSheet)
-        }
+
         #if os(iOS)
         .fullScreenCover(item: $showARViewForArtwork) { artwork in
             ARArtView(artwork: artwork)
@@ -163,14 +160,8 @@ struct ContentView: View {
                                 }
 
                                 #if os(iOS)
-                                if artwork.isAREnabledForFree || storeManager.isProUnlocked {
-                                    Button(action: { showARViewForArtwork = artwork }) {
-                                        Label("AR View", systemImage: "arkit")
-                                    }
-                                } else {
-                                    Button(action: { showUpgradeSheet = true }) {
-                                        Label("Upgrade for AR", systemImage: "sparkles")
-                                    }
+                                Button(action: { showARViewForArtwork = artwork }) {
+                                    Label("AR View", systemImage: "arkit")
                                 }
                                 #elseif os(visionOS)
                                 Button {
@@ -229,16 +220,9 @@ struct ContentView: View {
                                         Label("Instructions", systemImage: "list.bullet.rectangle")
                                     }
                                     
-                                    // Conditionally show AR button or Upgrade button
                                     #if os(iOS)
-                                    if artwork.isAREnabledForFree || storeManager.isProUnlocked {
-                                        Button(action: { showARViewForArtwork = artwork }) {
-                                            Label("AR View", systemImage: "arkit")
-                                        }
-                                    } else {
-                                        Button(action: { showUpgradeSheet = true }) {
-                                            Label("Upgrade for AR", systemImage: "sparkles")
-                                        }
+                                    Button(action: { showARViewForArtwork = artwork }) {
+                                        Label("AR View", systemImage: "arkit")
                                     }
                                     #elseif os(visionOS)
                                     Button {

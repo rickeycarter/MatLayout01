@@ -170,7 +170,9 @@ final class ImmersiveGalleryViewModel {
             height: extent.height
         )
         let entity = ModelEntity(mesh: mesh, materials: [wallMaterial])
-        if !showWallLocators {
+        if showWallLocators {
+            entity.components.set(OpacityComponent(opacity: 0.15))
+        } else {
             entity.components.set(OpacityComponent(opacity: 0))
         }
         entity.name = "wall-\(anchor.id.uuidString)"
@@ -199,7 +201,7 @@ final class ImmersiveGalleryViewModel {
     private func updateWallLocatorVisibility() {
         for (_, entity) in wallColliders {
             if showWallLocators {
-                entity.components.remove(OpacityComponent.self)
+                entity.components.set(OpacityComponent(opacity: 0.15))
             } else {
                 entity.components.set(OpacityComponent(opacity: 0))
             }
@@ -608,8 +610,12 @@ struct VisionGalleryView: View {
             content.add(viewModel.rootEntity)
 
             if let toolbar = attachments.entity(for: "toolbar") {
-                toolbar.position = [0, 1.0, -1.5]
-                content.add(toolbar)
+                let headAnchor = AnchorEntity(.head)
+                headAnchor.name = "toolbarAnchor"
+                // Position relative to head: slightly below eye level, 1.5m forward
+                toolbar.position = [0, -0.4, -1.5]
+                headAnchor.addChild(toolbar)
+                content.add(headAnchor)
             }
         } attachments: {
             Attachment(id: "toolbar") {

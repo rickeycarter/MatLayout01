@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "vision_frame.png",
+      "filename" : "vision_round_frame.png",
       "idiom" : "vision",
       "scale" : "2x"
     }

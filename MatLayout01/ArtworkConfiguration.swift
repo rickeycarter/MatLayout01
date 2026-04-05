@@ -32,6 +32,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
     let customFrameWidthInches: Double?
     let customFrameHeightInches: Double?
     let hangerDropInches: Double?
+    let hasPreCutMat: Bool
     let isAREnabledForFree: Bool
     let creationDate: Date
 
@@ -60,6 +61,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         customFrameWidthInches: Double? = nil,
         customFrameHeightInches: Double? = nil,
         hangerDropInches: Double? = nil,
+        hasPreCutMat: Bool = false,
         isAREnabledForFree: Bool = false,
         creationDate: Date = Date()
     ) {
@@ -86,6 +88,7 @@ struct ArtworkConfiguration: Identifiable, CustomStringConvertible {
         self.customFrameWidthInches = customFrameWidthInches
         self.customFrameHeightInches = customFrameHeightInches
         self.hangerDropInches = hangerDropInches
+        self.hasPreCutMat = hasPreCutMat
         self.isAREnabledForFree = isAREnabledForFree
         self.creationDate = creationDate
     }
