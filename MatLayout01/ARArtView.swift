@@ -14,27 +14,55 @@ import ARKit
 struct ARArtView: View {
     let artwork: ArtworkConfiguration
     @Environment(\.dismiss) private var dismiss
+    @State private var showPlacementHint = true
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ARViewContainer(artwork: artwork)
-                .edgesIgnoringSafeArea(.all)
+        ZStack {
+            ARViewContainer(artwork: artwork, onArtworkPlaced: {
+                withAnimation { showPlacementHint = false }
+            })
+            .edgesIgnoringSafeArea(.all)
 
-            Button(action: {
-                dismiss()
-            }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.largeTitle)
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.largeTitle)
+                            .foregroundColor(.white)
+                            .background(Color.black.opacity(0.4).clipShape(Circle()))
+                    }
+                    .padding()
+                }
+
+                Spacer()
+
+                if showPlacementHint {
+                    HStack(spacing: 12) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.title2)
+                        Text("Point your camera at a wall, then tap where you want to hang your artwork")
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                    }
                     .foregroundColor(.white)
-                    .background(Color.black.opacity(0.4).clipShape(Circle()))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            .padding()
         }
     }
 }
 
 fileprivate struct ARViewContainer: UIViewRepresentable {
     let artwork: ArtworkConfiguration
+    var onArtworkPlaced: (() -> Void)?
 
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
@@ -53,6 +81,7 @@ fileprivate struct ARViewContainer: UIViewRepresentable {
         
         context.coordinator.arView = arView
         context.coordinator.artwork = artwork
+        context.coordinator.onArtworkPlaced = onArtworkPlaced
 
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap))
         arView.addGestureRecognizer(tapGesture)
@@ -71,6 +100,7 @@ fileprivate struct ARViewContainer: UIViewRepresentable {
         weak var arView: ARView?
         var artwork: ArtworkConfiguration?
         var placedArtworkAnchor: AnchorEntity?
+        var onArtworkPlaced: (() -> Void)?
 
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard let arView = arView, let artwork = artwork else { return }
@@ -91,6 +121,7 @@ fileprivate struct ARViewContainer: UIViewRepresentable {
                         newAnchor.addChild(artworkEntity)
                         self.arView?.scene.addAnchor(newAnchor)
                         self.placedArtworkAnchor = newAnchor
+                        self.onArtworkPlaced?()
                     }
                 }
             }
